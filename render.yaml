@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: breast-cancer-agent
+    runtime: python
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: streamlit run app.py --server.port $PORT --server.address 0.0.0.0 --server.headless true
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.12.8
+      - key: PUBLIC_MODE
+        value: "1"
+      - key: OPENAI_BASE_URL
+        value: https://api.groq.com/openai/v1
+      - key: LLM_MODEL
+        value: openai/gpt-oss-120b
+      - key: OPENAI_API_KEY
+        sync: false   # Render asks you for the key; it is never stored in GitHub

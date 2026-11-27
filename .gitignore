@@ -1,0 +1,10 @@
+# secrets - never upload
+.env
+# local environment and generated files
+.venv/
+venv/
+__pycache__/
+.pytest_cache/
+logs/
+outputs/charts/*.png
+.idea/

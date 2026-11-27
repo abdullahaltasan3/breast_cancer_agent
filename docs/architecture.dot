@@ -1,0 +1,28 @@
+digraph G {
+  rankdir=TB; bgcolor="white"; pad=0.3; nodesep=0.45; ranksep=0.42;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=12, color="#264653", fillcolor="#f1f5f9", penwidth=1.3, margin="0.18,0.08"];
+  edge [fontname="Helvetica", fontsize=10, color="#475569"];
+
+  user  [label="User question\n(web interface)", fillcolor="#e0f2fe"];
+  intake[label="Coordinator - intake\nroutes the question; refuses personal\nmedical-advice requests", fillcolor="#fde68a"];
+  analyst[label="Data Analyst agent (LLM)\nplans, selects tools, drafts answer", fillcolor="#bbf7d0"];
+  tools [label="Data tools\ndataset_overview | describe_variable | count_cases\ncompare_groups | correlation | find_outliers\nmake_chart | predict_case", fillcolor="#ffffff"];
+  data  [label="final_dataset.csv\n569 rows x 14 columns", shape=cylinder, fillcolor="#e2e8f0"];
+  verify[label="Verifier (rule-based check)\nevery number in tool output?\nsimulated data disclosed?", fillcolor="#fecaca"];
+  expl  [label="Medical Explainer agent (LLM)\nplain-language explanation,\nno new numbers", fillcolor="#ddd6fe"];
+  final [label="Coordinator - final answer\nanswer + explanation + notes\n+ tables + charts + trace", fillcolor="#fde68a"];
+  out   [label="Answer shown in interface\n+ log file (logs/*.jsonl)", fillcolor="#e0f2fe"];
+
+  user -> intake;
+  intake -> analyst [label=" data question"];
+  intake -> final [label=" personal medical\n request", style=dashed];
+  analyst -> tools [label=" tool calls"];
+  tools -> data [dir=both, arrowtail=none];
+  tools -> analyst [label=" results / errors"];
+  analyst -> verify [label=" draft"];
+  verify -> analyst [label=" revise (max 2)", color="#b91c1c", fontcolor="#b91c1c"];
+  verify -> expl [label=" passed"];
+  expl -> final;
+  final -> out;
+  {rank=same; analyst; tools; data}
+}
