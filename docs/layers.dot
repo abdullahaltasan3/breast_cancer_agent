@@ -1,0 +1,36 @@
+digraph L {
+  rankdir=TB; bgcolor="white"; pad=0.35; nodesep=0.3; ranksep=0.35; newrank=true;
+  node [shape=box, style="rounded,filled", fontname="Helvetica", fontsize=13, color="#2b3a4a", penwidth=1.3, margin="0.2,0.1"];
+  edge [color="#475569", penwidth=1.4, fontname="Helvetica", fontsize=11];
+
+  subgraph cluster_ui { label=<<b>1. User interface</b>   <font point-size="11">Streamlit · app.py</font>>; labeljust=l; fontname="Helvetica"; fontsize=14;
+    style="rounded,filled"; fillcolor="#e0f2fe"; color="#7aa7c7";
+    ui [label="User types a question\nand sees the answer, explanation, tables, charts and agent steps", fillcolor="#ffffff"]; }
+
+  subgraph cluster_ag { label=<<b>2. Agents</b>   <font point-size="11">LangGraph + Groq (gpt-oss-120b) · agent/graph.py</font>>; labeljust=l; fontname="Helvetica"; fontsize=14;
+    style="rounded,filled"; fillcolor="#fff7d6"; color="#d4b44a";
+    co  [label="Coordinator\nroutes / refuses", fillcolor="#fde68a"];
+    re  [label="Retriever (LLM)\nselects tools, drafts", fillcolor="#bbf7d0"];
+    ve  [label="Verifier\nchecks numbers", fillcolor="#fecaca"];
+    ex  [label="Medical Explainer (LLM)\nplain language", fillcolor="#ddd6fe"];
+    co -> re -> ve -> ex; ve -> re [label=" revise", color="#b91c1c", fontcolor="#b91c1c", constraint=false];
+    {rank=same; co; re; ve; ex} }
+
+  subgraph cluster_tl { label=<<b>3. Data tools</b>   <font point-size="11">pandas · scikit-learn · matplotlib · agent/tools.py</font>>; labeljust=l; fontname="Helvetica"; fontsize=14;
+    style="rounded,filled"; fillcolor="#f1f5f9"; color="#94a3b8";
+    t1 [label="dataset_overview", fillcolor="#ffffff"]; t2 [label="describe_variable", fillcolor="#ffffff"];
+    t3 [label="count_cases", fillcolor="#ffffff"]; t4 [label="compare_groups", fillcolor="#ffffff"];
+    t5 [label="correlation", fillcolor="#ffffff"]; t6 [label="find_outliers", fillcolor="#ffffff"];
+    t7 [label="make_chart", fillcolor="#ffffff"]; t8 [label="predict_case", fillcolor="#ffffff"];
+    {rank=same; t1; t2; t3; t4} {rank=same; t5; t6; t7; t8}
+    t1 -> t5 [style=invis]; t2 -> t6 [style=invis]; t3 -> t7 [style=invis]; t4 -> t8 [style=invis]; }
+
+  subgraph cluster_dt { label=<<b>4. Data</b>   <font point-size="11">prepared in Section 3</font>>; labeljust=l; fontname="Helvetica"; fontsize=14;
+    style="rounded,filled"; fillcolor="#eef2e6"; color="#8aa36b";
+    db [label="final_dataset.csv\n569 records × 14 columns", shape=cylinder, fillcolor="#ffffff"]; }
+
+  ui -> co [label="  question", lhead=cluster_ag];
+  re -> t2 [label="  tool calls", ltail=cluster_ag, lhead=cluster_tl];
+  t6 -> db [label="  read data", ltail=cluster_tl];
+  ex -> ui [label="  answer", style=dashed, constraint=false];
+}

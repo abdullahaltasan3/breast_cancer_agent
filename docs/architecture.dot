@@ -5,7 +5,7 @@ digraph G {
 
   user  [label="User question\n(web interface)", fillcolor="#e0f2fe"];
   intake[label="Coordinator - intake\nroutes the question; refuses personal\nmedical-advice requests", fillcolor="#fde68a"];
-  analyst[label="Data Analyst agent (LLM)\nplans, selects tools, drafts answer", fillcolor="#bbf7d0"];
+  retriever[label="Retriever agent (LLM)\nplans, selects tools, retrieves data,\ndrafts answer", fillcolor="#bbf7d0"];
   tools [label="Data tools\ndataset_overview | describe_variable | count_cases\ncompare_groups | correlation | find_outliers\nmake_chart | predict_case", fillcolor="#ffffff"];
   data  [label="final_dataset.csv\n569 rows x 14 columns", shape=cylinder, fillcolor="#e2e8f0"];
   verify[label="Verifier (rule-based check)\nevery number in tool output?\nsimulated data disclosed?", fillcolor="#fecaca"];
@@ -14,15 +14,15 @@ digraph G {
   out   [label="Answer shown in interface\n+ log file (logs/*.jsonl)", fillcolor="#e0f2fe"];
 
   user -> intake;
-  intake -> analyst [label=" data question"];
+  intake -> retriever [label=" data question"];
   intake -> final [label=" personal medical\n request", style=dashed];
-  analyst -> tools [label=" tool calls"];
+  retriever -> tools [label=" tool calls"];
   tools -> data [dir=both, arrowtail=none];
-  tools -> analyst [label=" results / errors"];
-  analyst -> verify [label=" draft"];
-  verify -> analyst [label=" revise (max 2)", color="#b91c1c", fontcolor="#b91c1c"];
+  tools -> retriever [label=" results / errors"];
+  retriever -> verify [label=" draft"];
+  verify -> retriever [label=" revise (max 2)", color="#b91c1c", fontcolor="#b91c1c"];
   verify -> expl [label=" passed"];
   expl -> final;
   final -> out;
-  {rank=same; analyst; tools; data}
+  {rank=same; retriever; tools; data}
 }

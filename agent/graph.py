@@ -29,7 +29,8 @@ from langgraph.graph.message import add_messages
 
 from .lc_tools import LC_TOOLS, LC_TOOLS_BY_NAME
 from .prompts import (RETRIEVER_PROMPT, DISCLAIMER, EXPLAINER_PROMPT, REFUSAL_TEXT,
-                      REFUSAL_TEXT_AR, REVISION_PROMPT)
+                      REFUSAL_TEXT_AR, REVISION_PROMPT, SAFETY_FOOTER, SAFETY_FOOTER_AR,
+                      SUPPORT_DATA_PROMPT, SUPPORT_FALLBACK, SUPPORT_FALLBACK_AR, SUPPORT_PROMPT)
 from .tools import SIMULATED_NOTE
 from .verify import (is_arabic, is_personal_medical_request, mentions_simulated, numbers_in_text, unsupported_numbers,
                      used_simulated)
@@ -52,6 +53,7 @@ class AgentState(TypedDict, total=False):
     problems: list[str]
     explanation: str
     refused: bool
+    mode: str                                 # "data" or "support" (personal health question)
     final: dict
     trace: list[dict]
 
@@ -106,12 +108,13 @@ def build_graph(llm=None):
     def intake(state: AgentState):
         q = state["question"]
         if is_personal_medical_request(q):
-            return {"refused": True, "trace": _log(state, "Coordinator", "refuse_personal_medical_request")}
+            return {"mode": "support", "refused": False, "tool_calls": [], "messages": [],
+                    "trace": _log(state, "Coordinator", "support_mode_personal_health_question")}
         msgs = [SystemMessage(RETRIEVER_PROMPT)]
         for turn in (state.get("history") or [])[-3:]:
             msgs += [HumanMessage(turn["question"]), AIMessage(turn["answer"])]
         msgs.append(HumanMessage(q))
-        return {"messages": msgs, "tool_calls": [], "tool_rounds": 0, "revisions": 0,
+        return {"messages": msgs, "tool_calls": [], "tool_rounds": 0, "revisions": 0, "mode": "data",
                 "refused": False, "trace": _log(state, "Coordinator", "route_to_retriever", question=q)}
 
     # ---------------- Retriever ----------------
@@ -129,6 +132,30 @@ def build_graph(llm=None):
             return {"messages": [ai], "trace": _log(state, "Retriever", "select_tools", plan=plan)}
         return {"messages": [ai], "draft": _text(ai),
                 "trace": _log(state, "Retriever", "draft_answer", draft=_text(ai))}
+
+    # ---------------- Retriever (support mode) ----------------
+    def support_retriever(state: AgentState):
+        """For a personal health question: fetch general facts from the dataset (fixed, safe
+        tool calls) and write a short, clearly-labelled summary of what the research data shows."""
+        plan = [("count_cases", {"group_by": ["diagnosis"]}),
+                ("compare_groups", {"variables": ["radius", "concave_points"]})]
+        trace = _log(state, "Retriever", "select_tools", plan=[{"tool": n, "args": a} for n, a in plan])
+        calls = []
+        for name, args in plan:
+            result = LC_TOOLS_BY_NAME[name].invoke(args)
+            calls.append({"name": name, "args": args, "result": result})
+            trace = _log({"trace": trace}, "Tools", "result", tool=name, ok="error" not in result,
+                         preview=json.dumps(result, default=str)[:300])
+        compact = json.dumps([{"tool": c["name"], "result": {k: v for k, v in c["result"].items()
+                                                              if k not in {"notes", "source"}}}
+                              for c in calls], default=str)
+        try:
+            draft = _text(llm.invoke([HumanMessage(SUPPORT_DATA_PROMPT.format(
+                question=state["question"], results=compact))]))
+        except Exception:  # noqa: BLE001
+            draft = ""
+        return {"tool_calls": calls, "draft": draft,
+                "trace": _log({"trace": trace}, "Retriever", "draft_data_summary", draft=draft)}
 
     def run_tools(state: AgentState):
         ai: AIMessage = state["messages"][-1]
@@ -160,6 +187,9 @@ def build_graph(llm=None):
                             ". Remove them or replace them with numbers from the tools.")
         if used_simulated(calls) and not mentions_simulated(draft):
             problems.append("You used age or gender: state that they are simulated.")
+        if state.get("mode") == "support" and problems:
+            return {"verified": True, "problems": [], "draft": "",
+                    "trace": _log(state, "Verifier", "dropped_data_summary", problems=problems)}
         if not problems:
             return {"verified": True, "problems": [],
                     "trace": _log(state, "Verifier", "passed", numbers_checked=len(numbers_in_text(draft)))}
@@ -172,10 +202,25 @@ def build_graph(llm=None):
 
     def after_verifier(state: AgentState):
         # a revision request was appended -> back to the retriever; otherwise go on
+        if state.get("mode") == "support" or not state.get("messages"):
+            return "explainer"
         return "retriever" if state["messages"][-1].type == "human" else "explainer"
 
     # ---------------- Medical Explainer ----------------
     def explainer(state: AgentState):
+        if state.get("mode") == "support":
+            arabic = is_arabic(state["question"])
+            try:
+                text = _text(llm.invoke([HumanMessage(SUPPORT_PROMPT.format(question=state["question"]))]))
+            except Exception:  # noqa: BLE001
+                text = ""
+            unsafe = (not text or unsupported_numbers(text, [], state["question"]) or re.search(
+                r"\b(you (?:have|don't have|do not have) cancer|it(?: is|'s) (?:benign|malignant)|"
+                r"\d+\s*mg|you will (?:die|be fine|survive))\b", text, re.I))
+            if unsafe:
+                return {"explanation": SUPPORT_FALLBACK_AR if arabic else SUPPORT_FALLBACK,
+                        "trace": _log(state, "Medical Explainer", "guidance_fallback")}
+            return {"explanation": text, "trace": _log(state, "Medical Explainer", "gave_guidance")}
         calls = state.get("tool_calls") or []
         if not any("error" not in c["result"] for c in calls):
             return {"explanation": "", "trace": _log(state, "Medical Explainer", "skipped_no_data")}
@@ -190,11 +235,19 @@ def build_graph(llm=None):
 
     # ---------------- Coordinator (final answer) ----------------
     def finalize(state: AgentState):
-        if state.get("refused"):
-            final = {"answer": REFUSAL_TEXT_AR if is_arabic(state["question"]) else REFUSAL_TEXT,
-                     "explanation": "", "notes": [DISCLAIMER],
-                     "tables": [], "charts": [], "verified": True, "tools_used": []}
-            return {"final": final, "trace": _log(state, "Coordinator", "final_refusal")}
+        if state.get("mode") == "support":
+            arabic = is_arabic(state["question"])
+            calls = state.get("tool_calls") or []
+            parts = [state.get("explanation") or (SUPPORT_FALLBACK_AR if arabic else SUPPORT_FALLBACK)]
+            if state.get("draft"):
+                header = "ماذا تُظهر بيانات البحث" if arabic else "What the research data shows"
+                parts.append(f"**{header}:** {state['draft']}")
+            parts.append(f"*{SAFETY_FOOTER_AR if arabic else SAFETY_FOOTER}*")
+            final = {"answer": "\n\n".join(parts), "explanation": "", "notes": [DISCLAIMER],
+                     "tables": [],  # no statistics tables in a reply to someone's personal situation
+                     "charts": [], "verified": True,
+                     "tools_used": [{"name": c["name"], "args": c["args"]} for c in calls]}
+            return {"final": final, "trace": _log(state, "Coordinator", "final_answer_support")}
         calls = state.get("tool_calls") or []
         notes = []
         if used_simulated(calls) or any(SIMULATED_NOTE in str(c["result"]) for c in calls):
@@ -212,7 +265,7 @@ def build_graph(llm=None):
             "answer": answer,
             "explanation": state.get("explanation", ""),
             "notes": list(dict.fromkeys(notes)),
-            "tables": [t for c in calls if (t := to_table(c))],
+            "tables": [t for c in calls if (t := to_table(c)) and wants_table(c, state["question"])],
             "charts": [c["result"]["chart_path"] for c in calls if "chart_path" in c["result"]],
             "verified": bool(state.get("verified")),
             "tools_used": [{"name": c["name"], "args": c["args"]} for c in calls],
@@ -227,13 +280,26 @@ def build_graph(llm=None):
     g.add_node("explainer", explainer)
     g.add_node("finalize", finalize)
     g.add_edge(START, "intake")
-    g.add_conditional_edges("intake", lambda s: "finalize" if s.get("refused") else "retriever")
+    g.add_node("support_retriever", support_retriever)
+    g.add_conditional_edges("intake", lambda s: "support_retriever" if s.get("mode") == "support" else "retriever")
+    g.add_edge("support_retriever", "verifier")
     g.add_conditional_edges("retriever", after_retriever, {"tools": "tools", "verifier": "verifier"})
     g.add_edge("tools", "retriever")
     g.add_conditional_edges("verifier", after_verifier, {"retriever": "retriever", "explainer": "explainer"})
     g.add_edge("explainer", "finalize")
     g.add_edge("finalize", END)
     return g.compile()
+
+
+_OVERVIEW_WORDS = re.compile(r"column|field|variable|data ?type|type of each|missing|duplicate|"
+                             r"structure|schema|عمود|أعمدة|اعمدة|نوع البيانات|مفقود|مكرر", re.I)
+
+
+def wants_table(call: dict, question: str) -> bool:
+    """The columns overview is only useful when the user asked about the dataset's structure."""
+    if call["name"] == "dataset_overview":
+        return bool(_OVERVIEW_WORDS.search(question or ""))
+    return True
 
 
 def to_table(call: dict) -> Optional[dict]:
@@ -248,7 +314,9 @@ def to_table(call: dict) -> Optional[dict]:
             rows = [{"group": "all", **r.get("overall", {})}]
         return {"title": f"Statistics of {r['variable']}", "rows": rows}
     if n == "count_cases":
-        return {"title": "Case counts", "rows": r.get("counts") or [{"total": r["total"]}]}
+        if not r.get("counts"):
+            return None  # a single total is already in the answer text; a one-cell table adds nothing
+        return {"title": "Case counts", "rows": r["counts"]}
     if n == "compare_groups":
         rows = []
         for item in r["comparison"]:

@@ -102,6 +102,13 @@ st.markdown("""
   .explain {background: #FFFFFF; border: 1px solid #E8E5DA; border-left: 3px solid #C96442;
             border-radius: 10px; padding: .7rem .9rem; color: #3D3C38; margin: .6rem 0;}
   .note {color: #8A8880; font-size: .8rem;}
+  .pipeline {display: flex; flex-wrap: wrap; align-items: center; gap: .3rem; margin: .2rem 0 .7rem 0;}
+  .chip {font-size: .74rem; background: #FFFFFF; border: 1px solid #E3E0D6; border-radius: 999px;
+         padding: .2rem .6rem; color: #3D3C38;}
+  .chip b {font-weight: 600; color: #1F1E1D;}
+  .chip.off {opacity: .45;}
+  .arrow {color: #B5B2A8; font-size: .8rem;}
+  .who {font-size: .75rem; font-weight: 600; color: #C96442; margin-bottom: .25rem;}
 </style>
 """, unsafe_allow_html=True)
 
@@ -175,13 +182,45 @@ if st.session_state.get("settings") != settings:
 # ---------------------------------------------------------------- render ----
 def steps_label(out: dict) -> str:
     tools = out.get("tools_used", [])
-    if any(e["event"] == "refuse_personal_medical_request" for e in out.get("trace", [])):
-        return "Safety check · personal medical question, no advice given"
+    if any(e["event"] in SUPPORT_EVENTS for e in out.get("trace", [])):
+        return "Safety check · personal health question · general guidance, no diagnosis"
     revised = [e["event"] for e in out.get("trace", [])].count("revise")
     if not tools:
         return "Answered without the data tools" if out.get("trace") else "No answer"
     label = "Answered from the dataset · " + ", ".join(dict.fromkeys(t["name"] for t in tools))
     return label + (f" · checked and revised {revised}×" if revised else " · checked ✓")
+
+
+SUPPORT_EVENTS = {"refuse_personal_medical_request", "supportive_reply", "fixed_refusal", "support_mode_personal_health_question"}
+AGENTS = [("Coordinator", "🧭"), ("Retriever", "🔎"), ("Verifier", "✅"), ("Medical Explainer", "💡")]
+
+
+def agent_strip(out: dict) -> str:
+    """One line showing what each of the 4 agents did for this answer."""
+    trace = out.get("trace", [])
+    ev = {(e["agent"], e["event"]) for e in trace}
+    tools = list(dict.fromkeys(t["name"] for t in out.get("tools_used", [])))
+    passed = [e for e in trace if e["agent"] == "Verifier" and e["event"] == "passed"]
+    revised = sum(1 for e in trace if e["event"] == "revise")
+    safety = any(e["event"] in SUPPORT_EVENTS for e in trace)
+    guided = any(e["agent"] == "Medical Explainer" and e["event"] in {"gave_guidance", "guidance_fallback"}
+                 for e in trace)
+    did = {
+        "Coordinator": "safety check → support mode" if safety else "routed the question",
+        "Retriever": (("used " + ", ".join(tools)) if tools else "answered directly")
+                     + (" (research facts)" if safety and tools else ""),
+        "Verifier": ("no numbers to check" if passed and not tools and not passed[-1].get("numbers_checked")
+                     else "checked the numbers ✓" + (f" (revised {revised}×)" if revised else "")) if passed
+                    else ("removed unchecked numbers" if any(e["event"] == "dropped_data_summary" for e in trace)
+                          else "not needed" if not tools else "could not verify"),
+        "Medical Explainer": "gave general guidance" if guided else
+                             "explained in plain words" if ("Medical Explainer", "explained") in ev else "not needed",
+    }
+    chips = []
+    for name, icon in AGENTS:
+        off = did[name] == "not needed"
+        chips.append(f'<span class="chip{" off" if off else ""}"><b>{icon} {name}</b> · {did[name]}</span>')
+    return '<div class="pipeline">' + '<span class="arrow">→</span>'.join(chips) + '</div>'
 
 
 def render_steps(out: dict) -> None:
@@ -196,7 +235,8 @@ def render_steps(out: dict) -> None:
 def render_extras(out: dict) -> None:
     if out.get("explanation"):
         text = re.sub(r"\*\*(.+?)\*\*", r"<b>\1</b>", out["explanation"])  # **bold** inside the HTML box
-        st.markdown(f'<div class="explain">💡 {text}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="explain"><div class="who">💡 Medical Explainer</div>{text}</div>',
+                    unsafe_allow_html=True)
     for t in out.get("tables", []):
         st.caption(t["title"])
         st.dataframe(pd.DataFrame(t["rows"]), use_container_width=True, hide_index=True)
@@ -209,6 +249,8 @@ def render_extras(out: dict) -> None:
 
 
 def render_assistant(out: dict, steps: bool) -> None:
+    if out.get("trace"):
+        st.markdown(agent_strip(out), unsafe_allow_html=True)
     if steps and out.get("trace"):
         render_steps(out)
     st.markdown(out["answer"])
@@ -272,6 +314,8 @@ if question:
                     st.caption(f"{e['agent']} · {e['event']}")
         failed = not out.get("trace")
         status.update(label=steps_label(out), state="error" if failed else "complete", expanded=False)
+        if out.get("trace"):
+            st.markdown(agent_strip(out), unsafe_allow_html=True)
         st.write_stream(stream_words(out["answer"]))
         render_extras(out)
     chat["messages"].append({"role": "assistant", "content": out["answer"], "out": out})

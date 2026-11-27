@@ -15,6 +15,8 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # question keyword -> (tool, args); first match wins
 ROUTES = [
+    ("people have a malignant tumour", ("count_cases", {"group_by": ["diagnosis"]})),
+    ("females", ("count_cases", {"group_by": ["gender_simulated"]})),
     ("over 60", ("count_cases", {"group_by": ["diagnosis"], "filters": [
         {"column": "age_simulated", "op": ">", "value": 60}]})),
     ("survival", ("describe_variable", {"variable": "five-year survival"})),

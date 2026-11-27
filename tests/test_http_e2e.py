@@ -91,12 +91,14 @@ def test_survival_not_in_dataset(server, tmp_path, monkeypatch):
     assert "does not contain" in out["answer"] and out["explanation"] == ""
 
 
-def test_medical_advice_refused_without_model_call(server, tmp_path, monkeypatch):
+def test_personal_question_gets_supportive_reply(server, tmp_path, monkeypatch):
     monkeypatch.setattr(G, "LOG_DIR", tmp_path)
     n = len(Handler.requests_seen)
     out = G.ask("I found a lump, do I have breast cancer?")
-    assert "can't give personal medical advice" in out["answer"]
-    assert len(Handler.requests_seen) == n
+    assert "not a diagnosis" in out["answer"]
+    new_reqs = Handler.requests_seen[n:]
+    assert len(new_reqs) == 2 and all("tools" not in r for r in new_reqs)   # data summary + guidance
+    assert [t["name"] for t in out["tools_used"]] == ["count_cases", "compare_groups"]
 
 
 def test_conversation_history_is_sent(server, tmp_path, monkeypatch):

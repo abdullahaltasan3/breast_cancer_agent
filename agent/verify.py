@@ -108,6 +108,21 @@ ADVICE_PATTERNS = [
     r"\b(?:is it|am i) (?:dangerous|serious|cancer|malignant|benign|going to)\b.*\b(?:my|i have)\b",
     r"\b(what|which) (treatment|medication|medicine|drug|dose|therapy) should\b",
     r"\b(diagnose|treat) me\b",
+    r"\bi(?:'ve| have| had| was| got| 've got| have got)?\s*(?:been\s+)?(?:diagnosed\s+with\s+|got\s+)?"
+    r"(?:(?:a|an|the|stage\s+\w+|early|late|advanced|metastatic|invasive|breasts?|brest|breat)\s+)*canc[ae]r\b",
+    r"\b(?:my )?doctor (?:said|says|told me|thinks)\b",
+    r"\bwhy (?:do|did|would|have) i (?:have|get|got|gotten|develop(?:ed)?)\b",
+    r"\bwhy (?:me|is this happening to me)\b",
+    r"\bhow (?:did i (?:get|catch|develop|end up with)|could i have (?:got|gotten|caught|developed))\b",
+    r"(?:كيف|ليش)\s+(?:جاني|جاتني|أصبت|اصبت|صار\s+عندي)",
+    r"\bis it my fault\b",
+    r"(?:ليش|ليه|لماذا|لم)\s+(?:عندي|لدي|أصبت|اصبت|انا|أنا|جاني|صار\s+لي)",
+    r"\bwhat (?:should|do) i do\b.*\b(?:cancer|tumou?r|lump|sick|pain|diagnos\w*|biopsy)\b",
+    r"\b(?:cancer|tumou?r|lump|diagnos\w*|biopsy)\b.*\bwhat (?:should|do) i do\b",
+    r"\bi(?:'m| am| feel|'ve been feeling| have been feeling| am feeling)\s+(?:so\s+|very\s+|really\s+)?(?:sick|ill|unwell|in pain|dizzy)\b",
+    r"\bi(?:'m| am)\s+(?:so\s+|very\s+|really\s+)?(?:scared|worried|afraid)\s+(?:that\s+i|i|about\s+(?:my|the lump|a lump|cancer|having)|of\s+(?:having|cancer|dying))",
+    r"\bi (?:have|got|feel) (?:a |some )?(?:pain|ache|discharge|swelling)\b",
+    r"\bmy (?:mother|mom|mum|sister|wife|friend|aunt|daughter)\b.*\b(?:cancer|tumou?r|lump|biopsy|sick|ill)\b",
     # Arabic: first-person health questions ("I have a tumour", "do I have cancer", ...)
     r"(?:انا|أنا|اني|إني|إنني|انني)?\s*(?:عندي|لدي|لديّ|فيني|وجدت|لقيت|حسيت)\s+(?:\S+\s+){0,2}(?:ورم|كتل[ةه]|سرطان|تكتل|كيس)",
     r"هل\s+(?:انا|أنا)\s+(?:مصاب|مريض|معرض)",
@@ -115,6 +130,9 @@ ADVICE_PATTERNS = [
     r"(?:ورمي|كتلتي|خزعتي|تحاليلي|أشعتي|اشعتي|فحوصاتي|تشخيصي)",
     r"(?:وش|ايش|ما|ماذا)\s+(?:العلاج|الدواء)\s+(?:اللي|الذي)?\s*(?:اخذه|آخذه|استخدمه|يناسبني)",
     r"(?:شخصني|شخّصني|عالجني|انصحني)",
+    r"(?:انا|أنا)?\s*(?:تعبان|تعبانة|مريض|مريضة|خايف|خايفة|قلقان|قلقانة)",
+    r"(?:احس|أحس|أشعر|اشعر)\s+(?:ب|بـ)?\s*(?:ألم|الم|وجع|تعب|دوخة)",
+    r"(?:امي|أمي|اختي|أختي|زوجتي|خالتي|عمتي)\s+(?:عندها|فيها|مصابة)",
 ]
 
 ARABIC_RE = re.compile(r"[\u0600-\u06FF]")

@@ -46,3 +46,68 @@ def test_number_check():
     assert unsupported_numbers("569 cases, 212 malignant (37.3%), 357 benign (62.7%)", []) == []  # dataset facts
     assert unsupported_numbers("Top 3 variables, Q1 and Q3", []) == []                             # small counts
     assert unsupported_numbers("About 1,234 cases", []) == ["1234"]
+
+
+ARABIC_DATA_QUESTIONS = [
+    "كم شخص عنده ورم خبيث؟", "كم عدد الاناث وكم عدد الذكور؟", "كم عدد الحالات اللي عندها ورم خبيث",
+    "قارن متوسط حجم الورم بين الحميد والخبيث", "ما هي الأعمدة الموجودة في البيانات؟",
+]
+PERSONAL_QUESTIONS_MORE = [
+    "I have a small tumor, is it dangerous?", "I've got a hard lump", "I found a small painless lump",
+    "انا مثلا عندي ورم حجمه صغير", "هل عندي سرطان؟", "هل انا مصاب بالسرطان", "ورمي حجمه 2 سم",
+    "لقيت كتلة صغيرة", "شخصني لو سمحت",
+]
+
+
+@pytest.mark.parametrize("q", ARABIC_DATA_QUESTIONS + ["How many patients have a malignant tumour?",
+                                                        "Which tumours are larger, benign or malignant?"])
+def test_data_questions_not_refused_arabic(q):
+    assert not is_personal_medical_request(q)
+
+
+@pytest.mark.parametrize("q", PERSONAL_QUESTIONS_MORE)
+def test_more_personal_questions_refused(q):
+    assert is_personal_medical_request(q)
+
+
+def test_arabic_digits_are_checked():
+    assert unsupported_numbers("المتوسط ١٧٫٤٦", [{"m": 17.4628}]) == []
+    assert unsupported_numbers("المتوسط ١٩٫٢", [{"m": 17.4628}]) == ["19.2"]
+
+
+def test_arabic_simulated_disclosure_recognised():
+    from agent.verify import mentions_simulated
+    assert mentions_simulated("متوسط العمر 57.82 (العمر بيانات محاكاة)")
+
+
+@pytest.mark.parametrize("q", ["I am worried about the results of this analysis", "hello", "What does radius mean?"])
+def test_general_messages_not_treated_as_personal(q):
+    assert not is_personal_medical_request(q)
+
+
+@pytest.mark.parametrize("q", ["i feel sick", "I am worried that I have cancer", "انا تعبان", "احس بألم"])
+def test_feelings_about_health_get_supportive_path(q):
+    assert is_personal_medical_request(q)
+
+
+@pytest.mark.parametrize("q", ["why do i have it ?", "Why did I get breast cancer?", "why me", "is it my fault?",
+                               "ليش عندي سرطان", "لماذا أصبت بالسرطان"])
+def test_why_do_i_have_it_gets_support(q):
+    assert is_personal_medical_request(q)
+
+
+@pytest.mark.parametrize("q", ["how many people have it? and why they have it", "Why do malignant tumours have larger radius?",
+                               "Why is concave_points the strongest variable?"])
+def test_why_questions_about_data_stay_data(q):
+    assert not is_personal_medical_request(q)
+
+
+@pytest.mark.parametrize("q", ["i have breasts cancer", "I have brest cancer", "i have cancer", "I've got stage 2 breast cancer",
+                               "I was diagnosed with breast cancer"])
+def test_typos_and_variants_of_i_have_cancer(q):
+    assert is_personal_medical_request(q)
+
+
+@pytest.mark.parametrize("q", ["I have a question about cancer data", "how many ppl have it ?", "How many cancer cases are there?"])
+def test_cancer_word_alone_is_not_personal(q):
+    assert not is_personal_medical_request(q)
